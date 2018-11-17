@@ -4,6 +4,7 @@ import Control.Monad.Except
 import Control.Applicative
 import Control.Monad
 import Control.Monad.State
+import Control.Monad.Reader
 import Data.Semigroup
 import Parser
 
@@ -51,14 +52,23 @@ eval :: Expr -> Eval Val
 eval (ExprString str) = return $ String str
 eval (ExprBool b) = return $ Bool b
 eval (ExprNum n) = return $ Number n
+eval (Assign name expr) = do
+  value <- eval expr
+  env   <- get
+  let env' = setValue env name value
+  put env'
+  return value
+
 eval (Cond pred consq alt) = do
   result <- eval pred
   case result of
     Bool False -> eval alt
     otherwise  -> eval consq
-eval (Var x) = maybe (throwError $ UnboundVar x)
-                     return
-                     (lookupVar globalEnv x)
+
+eval (Var x) = do
+  env <- get
+  maybe (throwError $ UnboundVar x) return (lookupVar env x)
+
 eval (App f args) = do
   func  <- eval f
   args' <- mapM eval args
@@ -76,14 +86,20 @@ type Frame = [(String, Val)]
 lookupVar :: Env -> String -> Maybe Val
 lookupVar env name = msum $ map (lookup name) env
 
+setValue :: Env -> String -> Val -> Env
+setValue (f:fs) name value = ((name, value):f) : fs
 
-type Eval a = ExceptT EvalError (State Env) a
 
-runEval :: Env -> Eval a -> (Either EvalError a, Env)
-runEval env ev = runState (runExceptT ev) env
+type Eval a = ExceptT EvalError (StateT Env IO) a
 
-evaluate :: Env -> Expr -> ThrowsError Val
-evaluate env expr = fst $ runEval env (eval expr)
+runEval :: Env -> Eval a -> IO (Either EvalError a, Env)
+runEval env ev = runStateT (runExceptT ev) env
+
+runEval' :: Env -> Eval a -> IO ()
+runEval' env ev = runEval env ev >> (return ())
+
+evaluate :: Env -> Expr -> IO (ThrowsError Val)
+evaluate env expr = fst `fmap` runEval env (eval expr)
 
 globalEnv :: Env
 globalEnv = [[("+", Prim sumVals),
