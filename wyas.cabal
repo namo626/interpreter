@@ -27,7 +27,8 @@ source-repository head
 library
   exposed-modules:
                   Lib,
-                  Interpreter
+                  Interpreter,
+                  Parser
   other-modules:
       Paths_wyas
   hs-source-dirs:
