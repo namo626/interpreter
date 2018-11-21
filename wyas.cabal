@@ -51,6 +51,7 @@ executable wyas-exe
   build-depends:
       base >=4.7 && <5
     , wyas
+    , mtl
   default-language: Haskell2010
 
 test-suite wyas-test

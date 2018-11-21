@@ -14,7 +14,7 @@ data Val = Number Integer
          | Bool Bool
          | List [Val]
          | Prim ([Val] -> Eval Val)
-         | Function [String] [Expr]
+         | Function [String] [Expr] Env
 
 showVal :: Val -> String
 showVal (Prim f) = "<function>"
@@ -33,10 +33,17 @@ data EvalError = UnboundVar String
                deriving Show
 
 instance Semigroup EvalError where
-  _ <> e = e
+  -- associative law
+  Empty <> x = x
+  x <> Empty = x
+  x <> y = y
 
 
 instance Monoid EvalError where
+  -- mempty must be the identity element, that is
+  -- Empty `mappend` x = x
+  -- x `mappend` Empty = x
+  -- mappend must be associative
   mempty = Empty
   mappend = (<>)
 
@@ -52,12 +59,21 @@ eval :: Expr -> Eval Val
 eval (ExprString str) = return $ String str
 eval (ExprBool b) = return $ Bool b
 eval (ExprNum n) = return $ Number n
+
+eval (Def name params body) = do
+  env <- get
+  let f = Function params body env
+      env' = setValue env name f
+
+  put env'
+  return $ String "Function defined"
+
 eval (Assign name expr) = do
   value <- eval expr
   env   <- get
   let env' = setValue env name value
   put env'
-  return value
+  return $ String "Value assigned"
 
 eval (Cond pred consq alt) = do
   result <- eval pred

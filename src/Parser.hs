@@ -14,6 +14,7 @@ data Expr = Var String
           | App Expr [Expr]
           | Assign String Expr
           | Cond Expr Expr Expr
+          | Def String [String] [Expr]
           deriving Show
 
 
@@ -22,6 +23,7 @@ parseExpr = try parseCond
          <|> try parseApp
          <|> try parseBinOp
          <|> try parseAssign
+         <|> try parseDef
          <|> parseVar
          <|> parseNum
          <|> parseString
@@ -35,6 +37,16 @@ readExpr input =
 
 noMore :: Parser ()
 noMore = spaces >> eof
+
+parseDef :: Parser Expr
+parseDef = do
+  string "def"
+  many1 space
+  c <- letter
+  cs <- many (letter <|> digit)
+  char ':'
+  many1 space
+  body <- parseExpr
 
 parseAssign :: Parser Expr
 parseAssign = do

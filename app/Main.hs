@@ -6,6 +6,7 @@ import System.Environment
 import System.IO
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Except
 
 main :: IO ()
 main = do
@@ -35,6 +36,9 @@ loop = do
   str <- liftIO $ readPrompt ">>> "
   when (str == "quit()") (return ())
   let expr = readExpr str
-  val <- eval expr
-  liftIO $ print val
+  val <- (fmap Right $ eval expr) `catchError` (return . Left)
+  case val of
+    Right v -> liftIO $ print v
+    Left e -> liftIO $ print e
+
   loop
