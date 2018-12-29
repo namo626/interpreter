@@ -15,6 +15,7 @@ data Expr = Var String
           | Assign String Expr
           | Cond Expr Expr Expr
           | Def String [String] [Expr]
+          | Lambda [String] [Expr] -- lambda params body
           deriving Show
 
 
@@ -44,9 +45,13 @@ parseDef = do
   many1 space
   c <- letter
   cs <- many (letter <|> digit)
+  char '('
+  args <- sepBy (many1 $ letter <|> digit) commaSep'
+  char ')'
   char ':'
   many1 space
   body <- parseExpr
+  return $ Def (c:cs) args [body]
 
 parseAssign :: Parser Expr
 parseAssign = do
@@ -94,11 +99,11 @@ parseParens = do
 
 parseBinOp :: Parser Expr
 parseBinOp = do
-  expr1 <- parseParens <|> parseNum <|> parseVar <|> parseString
+  expr1 <- parseParens <|> parseNum <|> (try parseApp) <|> parseVar <|> parseString
   spaces
   op <- try comparisons <|> ((\x->[x]) `fmap` oneOf operators)
   spaces
-  expr2 <- parseParens <|> parseNum <|> parseVar <|> parseString
+  expr2 <- parseParens <|> parseNum <|> (try parseApp) <|> parseVar <|> parseString
   return $ App (Var op) [expr1, expr2]
 
 parseVar :: Parser Expr

@@ -7,6 +7,7 @@ import System.IO
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Except
+import Control.Monad.State (get)
 
 main :: IO ()
 main = do
@@ -34,11 +35,14 @@ evalPrint str = do
 loop :: Eval ()
 loop = do
   str <- liftIO $ readPrompt ">>> "
-  when (str == "quit()") (return ())
-  let expr = readExpr str
-  val <- (fmap Right $ eval expr) `catchError` (return . Left)
-  case val of
-    Right v -> liftIO $ print v
-    Left e -> liftIO $ print e
+  when (str == "quit()") $ throwError Exit
+  if (str == "%who")
+    then get >>= liftIO . print
+    else do
+        let expr = readExpr str
+        val <- (fmap Right $ eval expr) `catchError` (return . Left)
+        case val of
+            Right v -> liftIO $ print v
+            Left e -> liftIO $ print e
 
   loop

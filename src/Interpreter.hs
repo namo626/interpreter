@@ -14,14 +14,15 @@ data Val = Number Integer
          | Bool Bool
          | List [Val]
          | Prim ([Val] -> Eval Val)
-         | Function [String] [Expr] Env
+         | Function (Maybe String) [String] [Expr] Env  -- Function name [parameter] <body> <env>
 
 showVal :: Val -> String
-showVal (Prim f) = "<function>"
+showVal (Prim f) = "<primitive>"
 showVal (Number n) = show n
 showVal (Bool n) = show n
 showVal (List ls) = concat $ map showVal ls
 showVal (String n) = show n
+showVal (Function _ _ _ _) = "<function>"
 
 instance Show Val where
   show = showVal
@@ -29,6 +30,7 @@ instance Show Val where
 data EvalError = UnboundVar String
                | TypeMismatch String
                | NotFunction String
+               | Exit
                | Empty
                deriving Show
 
@@ -60,18 +62,22 @@ eval (ExprString str) = return $ String str
 eval (ExprBool b) = return $ Bool b
 eval (ExprNum n) = return $ Number n
 
-eval (Def name params body) = do
+eval (Lambda params body) = do
   env <- get
-  let f = Function params body env
-      env' = setValue env name f
+  return $ Function Nothing params body env
 
+eval (Def name params body) = do
+  env      <- get
+  let func = Function (Just name) params body env
+      env' = defineVar env name func
   put env'
-  return $ String "Function defined"
+  return $ String $ "Function \"" ++ name ++ "\" defined"
+
 
 eval (Assign name expr) = do
   value <- eval expr
   env   <- get
-  let env' = setValue env name value
+  let env' = defineVar env name value
   put env'
   return $ String "Value assigned"
 
@@ -90,9 +96,32 @@ eval (App f args) = do
   args' <- mapM eval args
   apply func args'
 
+
+-- APPLY -------------------------------------------------------------
 apply :: Val -> [Val] -> Eval Val
+
 apply (Prim f) args = f args
+
+apply (Function Nothing params body env) args = do
+  oldEnv <- get
+  put $ extendEnv env params args
+  val <- evalSequence body
+  put oldEnv
+  return val
+
+apply proc@(Function (Just name) params body env) args = do
+  oldEnv <- get
+  put $ extendEnv env (name:params) (proc:args)
+  val <- evalSequence body
+  put oldEnv
+  return val
+
 apply g _ = throwError $ NotFunction (show g)
+
+evalSequence :: [Expr] -> Eval Val
+evalSequence [expr] = eval expr
+evalSequence (e:es) = eval e >> evalSequence es
+
 
 -- environment is a list of frames (extended env)
 type Env = [Frame]
@@ -102,8 +131,25 @@ type Frame = [(String, Val)]
 lookupVar :: Env -> String -> Maybe Val
 lookupVar env name = msum $ map (lookup name) env
 
-setValue :: Env -> String -> Val -> Env
-setValue (f:fs) name value = ((name, value):f) : fs
+defineVar :: Env -> String -> Val -> Env
+defineVar [] _ _ = error "Environment is empty"
+defineVar (f:fs) name value = case lookup name f of
+  Nothing   -> ((name, value):f) : fs
+  otherwise -> (loop f) : fs
+
+  where
+    searched = loop f
+    loop [] = []
+    loop (var:vars)
+      | fst var == name = (name, value) : vars
+      | otherwise       = var : (loop vars)
+
+
+-- Extend an environment with a new frame
+extendEnv :: Env -> [String] -> [Val] -> Env
+extendEnv env vars values
+  | length vars == length values = (zip vars values) : env
+  | otherwise = error "Unequal amount of bindings"
 
 
 type Eval a = ExceptT EvalError (StateT Env IO) a
@@ -163,8 +209,8 @@ binMult _ _ = throwError $ TypeMismatch "cannot multiply non-integers"
 
 binBool :: (Val -> String -> Eval a) -> (a -> a -> Bool) -> Val -> Val -> Eval Val
 binBool unpacker op val1 val2 = do
-  left  <- unpacker val1 "Cannot compare"
-  right <- unpacker val2 "Cannot compare"
+  left  <- unpacker val1 "Cannot compare values of different types"
+  right <- unpacker val2 "Cannot compare values of different types"
   return $ Bool (left `op` right)
 
 unpackBool :: Val -> String -> Eval Bool
